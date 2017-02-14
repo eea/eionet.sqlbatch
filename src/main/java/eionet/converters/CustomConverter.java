@@ -3,10 +3,8 @@ package eionet.converters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
+import java.io.*;
+import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -65,30 +63,35 @@ public class CustomConverter implements Converter {
         connection.setAutoCommit(false);
         st = connection.createStatement();
         if (connection != null) {
-            BufferedReader inputFile = getFile(input);
-            int count = 0;
-            while ((query = inputFile.readLine()) != null) {
-                query = query.trim();
-                if (query.isEmpty()) {
-                    log.debug("Ignored empty line");
-                    continue;
+            BufferedReader inputFile = null;
+            try {
+                inputFile = getFile(input);
+                int count = 0;
+                while ((query = inputFile.readLine()) != null) {
+                    query = query.trim();
+                    if (query.isEmpty()) {
+                        log.debug("Ignored empty line");
+                        continue;
+                    }
+                    st.addBatch(query);
+                    if (++count % batchSize == 0) {
+                        st.executeBatch();
+                        log.debug("Flushed last " + batchSize + " statements");
+                    }
                 }
-                st.addBatch(query);
-                if (++count % batchSize == 0) {
-                    st.executeBatch();
-                    log.debug("Flushed last " + batchSize + " statements");
-                }
-            }
-            st.executeBatch();
-            log.debug("Flushed remanining statements");
+                st.executeBatch();
+                log.debug("Flushed remanining statements");
 
-            connection.commit();
-            log.debug("Transaction committed successfully");
-            duration = System.currentTimeMillis() - duration;
-            log.info("SQL statements executed successfully, time it took to finish: " + String.format("%d minutes, %d seconds",
-                    TimeUnit.MILLISECONDS.toMinutes(duration), TimeUnit.MILLISECONDS.toSeconds(duration)
-                    - TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(duration)))
-            );
+                connection.commit();
+                log.debug("Transaction committed successfully");
+                duration = System.currentTimeMillis() - duration;
+                log.info("SQL statements executed successfully, time it took to finish: " + String.format("%d minutes, %d seconds",
+                        TimeUnit.MILLISECONDS.toMinutes(duration), TimeUnit.MILLISECONDS.toSeconds(duration)
+                                - TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(duration)))
+                );
+            } finally {
+                inputFile.close();
+            }
         }
     }
 
@@ -105,7 +108,7 @@ public class CustomConverter implements Converter {
     }
 
     private BufferedReader getFile(String filePath) throws FileNotFoundException {
-        return new BufferedReader(new FileReader(filePath));
+        return new BufferedReader(new InputStreamReader(new FileInputStream(filePath), Charset.forName("UTF-8")));
     }
 
     public void setUrl(String url) {
